@@ -1,0 +1,11 @@
+guac-extra
+Copyright 2026 Kiran Kumar Pradhan
+
+This product includes software developed at
+The Apache Software Foundation (http://www.apache.org/):
+Apache Guacamole, Copyright 2020 The Apache Software Foundation.
+Licensed under the Apache License, Version 2.0.
+
+This product includes code derived from voxl
+(https://github.com/tembo/voxl), Copyright (c) 2026 Tembo.
+Licensed under the MIT License; see third_party/licenses/voxl-MIT.txt.

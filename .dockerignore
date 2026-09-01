@@ -1,0 +1,6 @@
+**/.git
+**/.codegraph
+video/target
+video/include/guac_extra_video.h
+client/**/target
+client/**/node_modules

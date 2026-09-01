@@ -1,0 +1,7 @@
+/video/target/
+*.o
+*.lo
+*.la
+.deps/
+.libs/
+node_modules/
