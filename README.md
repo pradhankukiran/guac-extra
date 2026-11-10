@@ -3,6 +3,7 @@
 **Apache Guacamole with H.264 video streaming.** Smooth, low-bandwidth
 remote desktops in the browser, with nothing to install on the client.
 
+[![CI](https://github.com/pradhankukiran/guac-extra/actions/workflows/ci.yml/badge.svg)](https://github.com/pradhankukiran/guac-extra/actions/workflows/ci.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 ![Status: pre-1.0](https://img.shields.io/badge/status-pre--1.0-orange.svg)
 ![Protocols: RDP | VNC](https://img.shields.io/badge/video-RDP%20%7C%20VNC-informational.svg)
@@ -232,7 +233,8 @@ Known gaps:
 - **ARM64:** images build and pass unit tests under emulation; connections
   have not been checked on ARM64 hardware.
 - **Not supported:** GPU encoding, AV1/VP9, WebRTC transport.
-- No hosted CI yet; tests run locally with the make targets above.
+- CI builds both images and runs the unit and browser tests on every push;
+  the end-to-end and network tests run locally with the make targets above.
 
 ## Acknowledgements
 
