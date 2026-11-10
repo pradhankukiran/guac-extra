@@ -14,7 +14,7 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
-import java.net.URL;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
@@ -191,7 +191,7 @@ public class VideoRESTService {
      */
     private static String fetch(String address) throws IOException {
 
-        HttpURLConnection connection = (HttpURLConnection) new URL(address).openConnection();
+        HttpURLConnection connection = (HttpURLConnection) URI.create(address).toURL().openConnection();
         connection.setConnectTimeout(TIMEOUT_MS);
         connection.setReadTimeout(TIMEOUT_MS);
 
