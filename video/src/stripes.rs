@@ -72,6 +72,11 @@ pub struct Job {
     pub cap_kbps: u32,
     pub mb_dirty: Option<Arc<Vec<u8>>>,
     pub mb_cols: usize,
+    /// Where the user is working, in this picture's pixels (x, y, width,
+    /// height): its macroblocks are encoded `focus_boost` QP better, the
+    /// rest a quarter of that worse.
+    pub focus: Option<(usize, usize, usize, usize)>,
+    pub focus_boost: f32,
 }
 
 impl Job {
@@ -88,6 +93,8 @@ impl Job {
             cap_kbps: 0,
             mb_dirty: None,
             mb_cols: 0,
+            focus: None,
+            focus_boost: 0.0,
         }
     }
 }
@@ -148,10 +155,27 @@ pub fn worker(
         let changed = info
             .as_ref()
             .map_or(stripe_mbs, |m| m.iter().filter(|&&c| c == 0).count());
+        // Better quality around where the user is working
+        let mut offsets = job.focus.filter(|_| job.focus_boost > 0.0).map(|(fx, fy, fw, fh)| {
+            let (c0, c1) = (fx / 16, (fx + fw).div_ceil(16));
+            (0..rows * job.mb_cols)
+                .map(|i| {
+                    let (col, row) = (i % job.mb_cols, s.y / 16 + i / job.mb_cols);
+                    let y = row * 16;
+                    let inside = col >= c0 && col < c1 && y + 16 > fy && y < fy + fh;
+                    if inside { -job.focus_boost } else { job.focus_boost / 4.0 }
+                })
+                .collect::<Vec<f32>>()
+        });
         let te = Instant::now();
-        let r = s
-            .enc
-            .encode(&planes, job.ts, job.force_idr, info.as_deref_mut(), &mut out);
+        let r = s.enc.encode(
+            &planes,
+            job.ts,
+            job.force_idr,
+            info.as_deref_mut(),
+            offsets.as_deref_mut(),
+            &mut out,
+        );
         let enc_ms = te.elapsed().as_secs_f64() * 1000.0;
         if s.max_threads > 1 {
             if let Some(t) = gov.want(enc_ms, changed as f64, s.max_threads, job.now_ms) {

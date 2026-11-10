@@ -47,6 +47,10 @@ pub struct GxConfig {
     /// Halve the video's resolution while the link can't carry even
     /// `min_kbps`; viewers scale it back up.
     pub scaling: bool,
+    /// QP steps of extra quality around the focus set with
+    /// gx_encoder_set_focus() (the rest gets a quarter of that less); 0
+    /// (default) turns it off.
+    pub focus_boost: f32,
     /// ID of the first frame (default 1). A second encoder for the same
     /// viewers' streams (simulcast) should start half the range away.
     pub first_frame_id: u32,
@@ -131,6 +135,7 @@ pub unsafe extern "C" fn gx_config_default(cfg: *mut GxConfig) {
         stripes: d.stripes,
         adaptive_threads: d.adaptive_threads,
         scaling: d.scaling,
+        focus_boost: d.focus_boost,
         first_frame_id: d.first_frame_id,
         log: None,
         log_data: std::ptr::null_mut(),
@@ -183,6 +188,7 @@ pub unsafe extern "C" fn gx_encoder_new(
         stripes: c.stripes,
         adaptive_threads: c.adaptive_threads,
         scaling: c.scaling,
+        focus_boost: c.focus_boost,
         first_frame_id: c.first_frame_id,
     };
     match Session::new(config, width, height, now_ms, log.clone()) {
@@ -475,4 +481,18 @@ pub unsafe extern "C" fn gx_encoder_scale(enc: *const GxEncoder) -> u32 {
 pub unsafe extern "C" fn gx_encoder_viewer_congested(enc: *const GxEncoder, viewer: u32,
         now_ms: u64) -> bool {
     enc.as_ref().is_some_and(|e| e.session.viewer_congested(viewer, now_ms))
+}
+
+/// Sets where the user is working (e.g. around the mouse pointer), in
+/// display pixels, encoded at better quality when `focus_boost` is set. A
+/// width or height of 0 clears it.
+///
+/// # Safety
+/// `enc` must be a valid encoder.
+#[no_mangle]
+pub unsafe extern "C" fn gx_encoder_set_focus(enc: *mut GxEncoder, x: i32, y: i32,
+        width: i32, height: i32) {
+    if let Some(e) = enc.as_mut() {
+        e.session.set_focus(Some(Rect { x, y, width, height }));
+    }
 }

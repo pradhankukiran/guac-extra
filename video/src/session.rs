@@ -42,6 +42,10 @@ pub struct Config {
     /// Halve the video's resolution while the link can't carry even
     /// `min_kbps` (the viewer scales it back up).
     pub scaling: bool,
+    /// QP steps of extra quality around the focus (see
+    /// [`Session::set_focus`]); the rest gets a quarter of that less. 0
+    /// turns it off.
+    pub focus_boost: f32,
     /// ID of the first frame. Two encoders serving one display (simulcast)
     /// use IDs half the 32-bit range apart, so an ack for one never counts
     /// for the other.
@@ -65,6 +69,7 @@ impl Default for Config {
             stripes: 1,
             adaptive_threads: false,
             scaling: false,
+            focus_boost: 0.0,
             first_frame_id: 1,
         }
     }
@@ -127,6 +132,8 @@ pub struct Session {
     epoch: u64,
     frame: Option<Frame>,
     flow_blocked: bool,
+    /// Where the user is working, in display pixels.
+    focus: Option<Rect>,
     /// Resolution divisor: 1 (full) or 2 (half).
     scale: u32,
     /// The half-size picture while scaled.
@@ -271,6 +278,7 @@ impl Session {
             epoch: now_ms,
             frame: None,
             flow_blocked: false,
+            focus: None,
             scale: 1,
             small: None,
             scaler: Scaler {
@@ -293,6 +301,13 @@ impl Session {
 
     pub fn target_kbps(&self) -> u32 {
         self.rc.target as u32
+    }
+
+    /// Sets where the user is working (e.g. around the mouse pointer), in
+    /// display pixels; `None` for nowhere in particular. With `focus_boost`
+    /// set, that area is encoded at better quality.
+    pub fn set_focus(&mut self, focus: Option<Rect>) {
+        self.focus = focus.filter(|r| r.width > 0 && r.height > 0);
     }
 
     /// Current resolution divisor: 1 (full) or 2 (half).
@@ -686,6 +701,12 @@ impl Session {
             job.cap_kbps = if paintover { share.saturating_mul(2) } else { share };
             job.mb_dirty = mb_map.clone();
             job.mb_cols = job_cols;
+            job.focus_boost = self.cfg.focus_boost;
+            job.focus = self.focus.map(|r| {
+                let s = self.scale as i32;
+                let clamp = |v: i32| (v.max(0) / s) as usize;
+                (clamp(r.x), clamp(r.y), clamp(r.width), clamp(r.height))
+            });
             self.workers[i]
                 .0
                 .send(job)

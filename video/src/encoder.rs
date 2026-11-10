@@ -149,13 +149,15 @@ impl Encoder {
 
     /// Encodes one picture and appends the Annex-B output to `out`.
     /// `mb_info` holds one byte per macroblock, 1 (X264_MBINFO_CONSTANT) for
-    /// unchanged ones; x264 reads it before this returns.
+    /// unchanged ones; `quant_offsets` one QP offset per macroblock
+    /// (negative: better quality). x264 reads both before this returns.
     pub fn encode(
         &mut self,
         p: &Planes,
         ts_ms: i64,
         force_idr: bool,
         mb_info: Option<&mut [u8]>,
+        quant_offsets: Option<&mut [f32]>,
         out: &mut Vec<u8>,
     ) -> Result<Encoded, String> {
         unsafe {
@@ -173,6 +175,10 @@ impl Encoder {
             self.pic.i_qpplus1 = 0;
             self.pic.prop.mb_info = mb_info.map(|m| m.as_mut_ptr()).unwrap_or(ptr::null_mut());
             self.pic.prop.mb_info_free = None;
+            self.pic.prop.quant_offsets = quant_offsets
+                .map(|q| q.as_mut_ptr())
+                .unwrap_or(ptr::null_mut());
+            self.pic.prop.quant_offsets_free = None;
             // Strictly increasing pts even if the clock stalls.
             self.pts = ts_ms.max(self.pts + 1);
             self.pic.i_pts = self.pts;
@@ -183,6 +189,7 @@ impl Encoder {
                 ffi::x264_encoder_encode(self.h, &mut nals, &mut n, &mut self.pic, &mut pic_out);
             // x264 is done with the hint map; don't leave a dangling pointer.
             self.pic.prop.mb_info = ptr::null_mut();
+            self.pic.prop.quant_offsets = ptr::null_mut();
             if size < 0 {
                 return Err("x264_encoder_encode failed".into());
             }
@@ -235,7 +242,7 @@ mod tests {
         let (y, u, v) = (vec![80u8; 64 * 32], vec![128u8; 32 * 16], vec![128u8; 32 * 16]);
         let p = Planes { y: &y, u: &u, v: &v, stride_y: 64, stride_uv: 32 };
         let mut out = Vec::new();
-        let r = e.encode(&p, 0, true, None, &mut out).unwrap();
+        let r = e.encode(&p, 0, true, None, None, &mut out).unwrap();
         assert!(r.keyframe);
         // Annex-B start code, then an SPS (NAL type 7) because headers repeat.
         assert_eq!(&out[..4], &[0, 0, 0, 1]);
