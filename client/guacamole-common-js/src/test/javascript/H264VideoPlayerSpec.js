@@ -125,6 +125,44 @@ describe('Guacamole.H264VideoPlayer', function H264VideoPlayerSpec() {
 
     });
 
+    describe('Presenter', function presenterSpec() {
+
+        it('adds no delay while frames arrive steadily', function() {
+            var p = new Guacamole.H264VideoPlayer.Presenter(60);
+            for (var i = 0; i < 50; i++)
+                p.noteArrival(i, i * 33);
+            expect(p.delay).toBe(0);
+        });
+
+        it('holds frames back when arrivals are uneven, up to the maximum', function() {
+            var p = new Guacamole.H264VideoPlayer.Presenter(60);
+            var t = 0;
+            for (var i = 0; i < 100; i++) {
+                t += (i % 2) ? 10 : 56;   // bursts: 10 ms, then 56 ms
+                p.noteArrival(i, t);
+            }
+            expect(p.delay).toBeGreaterThan(20);
+            expect(p.delay).toBeLessThan(60.0001);
+        });
+
+        it('counts each frame once across its stripes', function() {
+            var p = new Guacamole.H264VideoPlayer.Presenter(60);
+            for (var i = 0; i < 50; i++) {
+                p.noteArrival(i, i * 33);
+                p.noteArrival(i, i * 33 + 20);   // second stripe, later
+            }
+            expect(p.delay).toBe(0);
+        });
+
+        it('shows frames at once when there is no delay', function() {
+            var p = new Guacamole.H264VideoPlayer.Presenter(60);
+            var shown = 0;
+            p.schedule(1, performance.now(), function() { shown++; });
+            expect(shown).toBe(1);
+        });
+
+    });
+
     describe('statistics', function statsSpec() {
 
         var base = function base() {
@@ -144,7 +182,7 @@ describe('Guacamole.H264VideoPlayer', function H264VideoPlayerSpec() {
             expect(lines[0]).toBe('Video: H.264, 2 stripe(s), 1024x768');
             expect(lines[1]).toBe('fps: 30.0');
             expect(lines[2]).toBe('kbit/s: 1000');
-            expect(lines[3]).toBe('decode: 2.0 ms');
+            expect(lines[3]).toBe('decode: 2.0 ms, smoothing: 0 ms');
         });
 
         it('says when video is off or paused', function() {

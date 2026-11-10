@@ -99,6 +99,14 @@ Guacamole.H264VideoPlayer = function H264VideoPlayer(stream, layer) {
     var regionsById = {};
     var pendingRegions = null;
 
+    /**
+     * When each part still being decoded arrived (frame ID ->
+     * performance.now()), for steady presentation.
+     *
+     * @private
+     */
+    var arrivalById = {};
+
     var stats = Guacamole.H264VideoPlayer.stats;
     stats.players++;
 
@@ -254,10 +262,21 @@ Guacamole.H264VideoPlayer = function H264VideoPlayer(stream, layer) {
                     delete submitted[frameId];
                     var regions = regionsById[frameId] || null;
                     delete regionsById[frameId];
+                    var arrival = arrivalById[frameId];
+                    delete arrivalById[frameId];
                     if (stopped)
                         frame.close();
+
+                    // Shown at a steady pace when arrivals are uneven
                     else
-                        draw(frame, regions);
+                        Guacamole.H264VideoPlayer.presenter.schedule(frameId,
+                                arrival !== undefined ? arrival : performance.now(),
+                                function present() {
+                                    if (stopped)
+                                        frame.close();
+                                    else
+                                        draw(frame, regions);
+                                });
                     stream.sendAck(String(frameId), Guacamole.Status.Code.SUCCESS);
                 },
                 error: function error(e) {
@@ -313,6 +332,8 @@ Guacamole.H264VideoPlayer = function H264VideoPlayer(stream, layer) {
         if (part.keyframe)
             stats.keyframes++;
         submitted[part.frameId] = performance.now();
+        arrivalById[part.frameId] = submitted[part.frameId];
+        Guacamole.H264VideoPlayer.presenter.noteArrival(part.frameId, submitted[part.frameId]);
         if (part.regions)
             regionsById[part.frameId] = part.regions;
 
@@ -596,7 +617,8 @@ Guacamole.H264VideoPlayer.stats = {
     width: 0,         // size of the last decoded picture
     height: 0,
     lastFrameId: -1,
-    hidden: false
+    hidden: false,
+    smoothingMs: 0    // current presentation delay evening out uneven arrivals
 };
 
 /**
@@ -648,7 +670,8 @@ Guacamole.H264VideoPlayer.formatStats = function formatStats(before, after, seco
             + after.width + 'x' + after.height + (after.hidden ? ' (paused: tab hidden)' : ''),
         'fps: ' + ((after.frames - before.frames) / seconds).toFixed(1),
         'kbit/s: ' + Math.round((after.bytes - before.bytes) * 8 / seconds / 1000),
-        'decode: ' + (parts > 0 ? ((after.decodeMs - before.decodeMs) / parts).toFixed(1) : '-') + ' ms',
+        'decode: ' + (parts > 0 ? ((after.decodeMs - before.decodeMs) / parts).toFixed(1) : '-') + ' ms'
+            + ', smoothing: ' + Math.round(after.smoothingMs || 0) + ' ms',
         'keyframes: ' + after.keyframes + ', dropped: ' + after.dropped
             + ', errors: ' + after.errors
     ];
@@ -725,3 +748,147 @@ Guacamole.H264VideoPlayer.upscaleFactor = function upscaleFactor(frameWidth, lay
         return 1;
     return Math.max(1, Math.round(layerWidth / frameWidth));
 };
+
+/**
+ * Shows decoded frames at a steady pace when they arrive unevenly (Wi-Fi,
+ * busy links). It measures the jitter of frame arrivals and holds frames
+ * for about twice that before showing them, up to `maxDelayMs`; with steady
+ * arrivals the delay is zero and frames are shown as soon as they are
+ * decoded. Frames of one frame ID (its stripes) are shown together, in
+ * order. Shared by every player on the page.
+ *
+ * @constructor
+ * @param {!number} maxDelayMs
+ *     The most a frame may be held back.
+ */
+Guacamole.H264VideoPlayer.Presenter = function Presenter(maxDelayMs) {
+
+    var presenter = this;
+
+    /**
+     * Frames waiting to be shown, in arrival order: {due, present}.
+     *
+     * @private
+     */
+    var queue = [];
+
+    /**
+     * Whether an animation frame is requested.
+     *
+     * @private
+     */
+    var scheduled = false;
+
+    var lastFrameId = null;
+    var lastArrival = null;
+    var meanInterval = 0;
+
+    /**
+     * Smoothed deviation of frame intervals from their mean, in ms.
+     *
+     * @type {!number}
+     */
+    this.jitter = 0;
+
+    /**
+     * Current presentation delay, in ms.
+     *
+     * @type {!number}
+     */
+    this.delay = 0;
+
+    /**
+     * Notes that a part of the given frame arrived. Only the first part of
+     * each frame counts.
+     *
+     * @param {!number} frameId
+     * @param {!number} arrival
+     *     performance.now() at arrival.
+     */
+    this.noteArrival = function noteArrival(frameId, arrival) {
+
+        if (frameId === lastFrameId)
+            return;
+
+        if (lastArrival !== null) {
+            var interval = arrival - lastArrival;
+
+            // Gaps over a second are pauses (nothing changed), not jitter
+            if (interval < 1000) {
+                meanInterval = meanInterval === 0 ? interval : meanInterval * 0.9 + interval * 0.1;
+                presenter.jitter = presenter.jitter * 0.9 + Math.abs(interval - meanInterval) * 0.1;
+            }
+        }
+
+        lastFrameId = frameId;
+        lastArrival = arrival;
+
+        // Ignore small jitter: it isn't visible, and holding frames adds lag
+        var target = presenter.jitter < 4 ? 0 : presenter.jitter * 2;
+        presenter.delay = Math.min(maxDelayMs, target);
+        Guacamole.H264VideoPlayer.stats.smoothingMs = presenter.delay;
+
+    };
+
+    /**
+     * Shows every queued frame that is due, in order.
+     *
+     * @private
+     */
+    var flush = function flush() {
+        scheduled = false;
+        var now = performance.now();
+        while (queue.length && queue[0].due <= now + 1)
+            queue.shift().present();
+        if (queue.length)
+            request();
+    };
+
+    /**
+     * Requests an animation frame to show due frames.
+     *
+     * @private
+     */
+    var request = function request() {
+        if (scheduled)
+            return;
+        scheduled = true;
+        window.requestAnimationFrame(flush);
+    };
+
+    /**
+     * Shows a decoded frame now, or once its delay has passed.
+     *
+     * @param {!number} frameId
+     * @param {!number} arrival
+     *     When the frame's part arrived (performance.now()).
+     * @param {!function} present
+     *     Draws the frame.
+     */
+    this.schedule = function schedule(frameId, arrival, present) {
+
+        // Nothing to even out, or no animation frames while hidden
+        var hidden = typeof document !== 'undefined' && document.hidden;
+        if (hidden || (presenter.delay <= 0 && queue.length === 0)) {
+            present();
+            return;
+        }
+
+        // Keep order: never before a frame already waiting
+        var due = arrival + presenter.delay;
+        if (queue.length && due < queue[queue.length - 1].due)
+            due = queue[queue.length - 1].due;
+
+        queue.push({ due: due, present: present });
+        request();
+
+    };
+
+};
+
+/**
+ * The presenter shared by every guac-extra video player on the page.
+ *
+ * @type {!Guacamole.H264VideoPlayer.Presenter}
+ */
+Guacamole.H264VideoPlayer.presenter = new Guacamole.H264VideoPlayer.Presenter(60);
