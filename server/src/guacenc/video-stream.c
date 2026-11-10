@@ -210,9 +210,23 @@ int guacenc_video_stream_receive(guacenc_video_stream* stream,
 
         int keyframe = h[1] & 0x01;
         stream->started |= keyframe;
+
+        /* Parts forwarded from the remote desktop start with a region list
+         * (count, then 8 bytes per region); skip it. The whole picture is
+         * drawn: such parts are not recorded (passthrough is off while
+         * recording), this only keeps guacenc from misreading them. */
+        const unsigned char* h264 = h + GUACENC_VIDEO_STREAM_HEADER;
+        size_t h264_length = part;
+        if ((h[1] & 0x04) && part >= 2) {
+            size_t skip = 2 + 8 * (((size_t) h264[0] << 8) | h264[1]);
+            if (skip > part)
+                skip = part;
+            h264 += skip;
+            h264_length -= skip;
+        }
+
         if (stream->started)
-            guacenc_video_stream_decode(stream, h + GUACENC_VIDEO_STREAM_HEADER,
-                    part, buffer);
+            guacenc_video_stream_decode(stream, h264, h264_length, buffer);
 
         offset += GUACENC_VIDEO_STREAM_HEADER + part;
 

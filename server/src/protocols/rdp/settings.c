@@ -24,6 +24,7 @@
 #include "resolution.h"
 #include "settings.h"
 
+#include <freerdp/codec/h264.h>
 #include <freerdp/constants.h>
 #include <freerdp/settings.h>
 #include <freerdp/freerdp.h>
@@ -52,6 +53,24 @@ const char fips_nla_mode_warning[] = (
 );
 
 /* Client plugin arguments */
+/**
+ * guac-extra: whether FreeRDP can decode H.264 here (it must, as guacd
+ * keeps its own copy of the screen even when forwarding H.264).
+ *
+ * @return
+ *     Non-zero if an H.264 decoder can be created, zero otherwise.
+ */
+static int guac_rdp_h264_available(void) {
+
+    H264_CONTEXT* h264 = h264_context_new(FALSE);
+    if (h264 == NULL)
+        return 0;
+
+    h264_context_free(h264);
+    return 1;
+
+}
+
 const char* GUAC_RDP_CLIENT_ARGS[] = {
     "hostname",
     "port",
@@ -160,6 +179,7 @@ const char* GUAC_RDP_CLIENT_ARGS[] = {
     "video-threads",
     "video-scaling",
     "video-simulcast",
+    "video-passthrough",
     NULL
 };
 
@@ -790,6 +810,13 @@ enum RDP_ARGS_IDX {
      */
     IDX_VIDEO_SIMULCAST,
 
+    /**
+     * guac-extra: "true" to offer H.264 (AVC420) in the Graphics Pipeline
+     * and forward the H.264 the RDP server sends to video users, instead of
+     * re-encoding the screen, whenever possible. Off by default.
+     */
+    IDX_VIDEO_PASSTHROUGH,
+
     RDP_ARGS_COUNT
 };
 
@@ -988,6 +1015,9 @@ guac_rdp_settings* guac_rdp_parse_args(guac_user* user,
     settings->video.simulcast =
         guac_user_parse_args_boolean(user, GUAC_RDP_CLIENT_ARGS, argv,
                 IDX_VIDEO_SIMULCAST, 1);
+    settings->video.passthrough =
+        guac_user_parse_args_boolean(user, GUAC_RDP_CLIENT_ARGS, argv,
+                IDX_VIDEO_PASSTHROUGH, 0);
 
     /* Domain */
     settings->domain =
@@ -1671,6 +1701,18 @@ void guac_rdp_push_settings(guac_client* client,
         freerdp_settings_set_uint32(rdp_settings, FreeRDP_ColorDepth, RDP_GFX_REQUIRED_DEPTH);
         freerdp_settings_set_bool(rdp_settings, FreeRDP_SoftwareGdi, TRUE);
 
+        /* guac-extra: offer H.264 (AVC420 only) so it can be forwarded */
+        if (guac_settings->enable_video && guac_settings->video.passthrough) {
+            if (guac_rdp_h264_available()) {
+                freerdp_settings_set_bool(rdp_settings, FreeRDP_GfxH264, TRUE);
+                freerdp_settings_set_bool(rdp_settings, FreeRDP_GfxAVC444, FALSE);
+                freerdp_settings_set_bool(rdp_settings, FreeRDP_GfxAVC444v2, FALSE);
+            }
+            else
+                guac_client_log(client, GUAC_LOG_WARNING, "video-passthrough "
+                        "needs FreeRDP built with H.264 decoding; not offering H.264.");
+        }
+
     }
 
     /* Set individual flags - some FreeRDP versions overwrite flags set by guac_rdp_get_performance_flags() above */
@@ -1905,6 +1947,18 @@ void guac_rdp_push_settings(guac_client* client,
         /* Required for RemoteFX / Graphics Pipeline */
         rdp_settings->ColorDepth = RDP_GFX_REQUIRED_DEPTH;
         rdp_settings->SoftwareGdi = TRUE;
+
+        /* guac-extra: offer H.264 (AVC420 only) so it can be forwarded */
+        if (guac_settings->enable_video && guac_settings->video.passthrough) {
+            if (guac_rdp_h264_available()) {
+                rdp_settings->GfxH264 = TRUE;
+                rdp_settings->GfxAVC444 = FALSE;
+                rdp_settings->GfxAVC444v2 = FALSE;
+            }
+            else
+                guac_client_log(client, GUAC_LOG_WARNING, "video-passthrough "
+                        "needs FreeRDP built with H.264 decoding; not offering H.264.");
+        }
 
     }
 

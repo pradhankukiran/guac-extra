@@ -67,6 +67,14 @@ typedef struct guac_display_video_settings {
     int simulcast;
 
     /**
+     * Non-zero to forward H.264 the remote desktop itself sends (RDP
+     * Graphics Pipeline, AVC420) to video users instead of re-encoding the
+     * screen, whenever that stream can stand in for guac-extra's own (see
+     * guac_display_video_passthrough()).
+     */
+    int passthrough;
+
+    /**
      * Non-zero to halve the video's resolution while the link can't carry
      * even the lowest bitrate (500 kbit/s); browsers scale it back up.
      */
@@ -96,6 +104,59 @@ typedef struct guac_display_video_settings {
  */
 int guac_display_enable_video(guac_display* display,
         const guac_display_video_settings* settings);
+
+/**
+ * A rectangle of the screen, in display pixels.
+ */
+typedef struct guac_display_video_region {
+    int x;
+    int y;
+    int width;
+    int height;
+} guac_display_video_region;
+
+/**
+ * Offers one frame of H.264 that the remote desktop sent for the whole
+ * screen (e.g. RDP AVC420), already decoded by the protocol plugin into the
+ * display as usual. If passthrough is enabled and possible, guacd forwards
+ * it to video users as is, instead of encoding the screen itself:
+ *
+ * - it starts only at a keyframe (IDR) from the remote desktop;
+ * - it is used only with one stripe, at full resolution, and with no
+ *   recording of the video;
+ * - when a user needs a keyframe the remote desktop hasn't sent (joining,
+ *   decoder error, tab shown again, moving between simulcast tiers), guacd
+ *   goes back to its own encoder for everyone, until the next keyframe from
+ *   the remote desktop.
+ *
+ * Call from the thread that draws the protocol's updates.
+ *
+ * @param display
+ *     The display the frame belongs to.
+ *
+ * @param h264
+ *     One H.264 access unit (Annex-B).
+ *
+ * @param length
+ *     Its length in bytes.
+ *
+ * @param regions
+ *     The parts of the picture this frame updates, in display pixels; the
+ *     rest of the decoded picture must not be shown.
+ *
+ * @param region_count
+ *     The number of regions.
+ *
+ * @param width
+ *     Width of the picture the frame encodes (must equal the display's).
+ *
+ * @param height
+ *     Height of the picture the frame encodes (must equal the display's).
+ */
+void guac_display_video_passthrough(guac_display* display,
+        const unsigned char* h264, size_t length,
+        const guac_display_video_region* regions, int region_count,
+        int width, int height);
 
 /**
  * Makes a session recording receive the video too: the recording socket

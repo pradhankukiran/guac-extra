@@ -81,6 +81,19 @@
 #define GUAC_DISPLAY_VIDEO_FLAG_PAINTOVER 0x02
 
 /**
+ * Header flag set when the part's data starts with a list of regions: only
+ * those parts of the decoded picture may be drawn (passthrough of H.264
+ * from the remote desktop; see docs/PROTOCOL.md).
+ */
+#define GUAC_DISPLAY_VIDEO_FLAG_REGIONS 0x04
+
+/**
+ * Frame IDs of passthrough frames start here: a quarter of the 32-bit range
+ * away from both simulcast tiers, so their acks never count for those.
+ */
+#define GUAC_DISPLAY_VIDEO_PASSTHROUGH_FIRST_FRAME 0x40000000u
+
+/**
  * Lowest bitrate the adaptive bitrate controller may choose, in kbit/s.
  */
 #define GUAC_DISPLAY_VIDEO_MIN_KBPS 500
@@ -196,6 +209,12 @@ typedef struct guac_display_video_entry {
      * slow users are moved to so they don't hold the others back.
      */
     int tier;
+
+    /**
+     * Whether the user currently receives the remote desktop's own H.264
+     * (passthrough) instead of guac-extra's encoder.
+     */
+    int passthrough;
 
     /**
      * Simulcast bookkeeping: since when the user has been congested (0 if
@@ -319,6 +338,15 @@ typedef struct guac_display_video {
     unsigned long overlay_images;
     unsigned long fallbacks;
     unsigned long errors;
+
+    /**
+     * Passthrough: whether the remote desktop's H.264 is currently forwarded
+     * to the main tier's users (instead of encoding), the next frame ID for
+     * it, and how many frames were forwarded.
+     */
+    int passthrough_active;
+    uint32_t passthrough_frame_id;
+    unsigned long passthrough_frames;
     guac_timestamp metrics_written;
 
 } guac_display_video;
@@ -381,6 +409,34 @@ static guac_display_video_entry* guac_display_video_find(
  */
 static GxEncoder* guac_display_video_tier(guac_display_video* video, int tier) {
     return tier == 1 ? video->low : video->encoder;
+}
+
+/**
+ * Passthrough: stops forwarding the remote desktop's H.264 and asks the main
+ * encoder for a keyframe for every user that was receiving it, so they go
+ * back to guac-extra's own stream. The video lock must be held.
+ */
+static void guac_display_video_passthrough_stop(guac_display_video* video,
+        const char* reason) {
+
+    if (!video->passthrough_active)
+        return;
+
+    video->passthrough_active = 0;
+
+    guac_display_video_entry* entry = video->entries;
+    for (; entry != NULL; entry = entry->next) {
+        if (!entry->passthrough)
+            continue;
+        entry->passthrough = 0;
+        if (entry->viewer != 0 && video->encoder != NULL)
+            gx_encoder_request_keyframe(video->encoder, entry->viewer);
+    }
+
+    guac_client_log(video->display->client, GUAC_LOG_INFO, "Video: passthrough "
+            "paused (%s); encoding until the remote desktop's next keyframe.",
+            reason);
+
 }
 
 /**
@@ -749,6 +805,9 @@ static void guac_display_video_encode_locked(guac_display_video* video);
 static void guac_display_video_resume(guac_display_video* video,
         guac_display_video_entry* entry) {
 
+    if (entry->tier == 0)
+        guac_display_video_passthrough_stop(video, "a user's tab became visible");
+
     entry->paused = 0;
     entry->since = guac_timestamp_current();
     entry->viewer = gx_encoder_add_viewer(guac_display_video_tier(video, entry->tier), entry->since);
@@ -818,16 +877,21 @@ static int guac_display_video_ack_handler(guac_user* user, guac_stream* stream,
         else if (status == GUAC_PROTOCOL_STATUS_SUCCESS) {
             if (message[0] >= '0' && message[0] <= '9') {
                 uint32_t frame_id = (uint32_t) strtoul(message, NULL, 10);
-                gx_encoder_ack(encoder, entry->viewer, frame_id,
-                        guac_timestamp_current());
+                /* Passthrough frames aren't the encoder's to acknowledge */
+                if (frame_id - GUAC_DISPLAY_VIDEO_PASSTHROUGH_FIRST_FRAME >= 0x40000000u)
+                    gx_encoder_ack(encoder, entry->viewer, frame_id,
+                            guac_timestamp_current());
                 entry->acks++;
             }
         }
 
         /* The user cannot decode this stream (e.g. its decoder failed):
          * ask for a keyframe so it can start over */
-        else
+        else {
+            if (entry->passthrough)
+                guac_display_video_passthrough_stop(video, "a user's decoder failed");
             gx_encoder_request_keyframe(encoder, entry->viewer);
+        }
 
         /* An ack may release flow control: send a waiting frame now */
         if (gx_encoder_next_deadline_ms(encoder, guac_timestamp_current()) == 0)
@@ -869,6 +933,9 @@ static void guac_display_video_add_viewer(guac_display_video* video,
         guac_display_video_entry* entry) {
 
     guac_socket* socket = entry->socket;
+
+    /* A new viewer needs a keyframe the remote desktop hasn't sent */
+    guac_display_video_passthrough_stop(video, "a user joined");
 
     guac_stream** streams = guac_mem_zalloc(video->stripe_count, sizeof(guac_stream*));
     for (int i = 0; i < video->stripe_count; i++) {
@@ -951,6 +1018,7 @@ static void guac_display_video_remove_viewer(guac_display_video* video,
     entry->viewer = 0;
     entry->paused = 0;
     entry->tier = 0;
+    entry->passthrough = 0;
 
     if (entry->streams == NULL)
         return;
@@ -1005,6 +1073,7 @@ static void guac_display_video_deactivate(guac_display_video* video, int notify)
     video->encoder = NULL;
     gx_encoder_free(video->low);
     video->low = NULL;
+    video->passthrough_active = 0;
 
     for (int i = 0; i < video->stripe_count; i++)
         guac_client_free_layer(client, video->layers[i]);
@@ -1242,6 +1311,7 @@ static void guac_display_video_write_metrics(guac_display_video* video, int forc
             "guac_extra_video_bytes_total{connection=\"%s\"} %llu\n"
             "guac_extra_video_target_kbps{connection=\"%s\"} %u\n"
             "guac_extra_video_scale{connection=\"%s\"} %u\n"
+            "guac_extra_video_passthrough{connection=\"%s\"} %i\n"
             "guac_extra_video_overlay_images_total{connection=\"%s\"} %lu\n"
             "guac_extra_video_fallbacks_total{connection=\"%s\"} %lu\n"
             "guac_extra_video_errors_total{connection=\"%s\"} %lu\n",
@@ -1249,6 +1319,7 @@ static void guac_display_video_write_metrics(guac_display_video* video, int forc
             id, video_users, id, paused, id, image_users, id, low_users,
             id, video->frames, id, video->keyframes, id, video->bytes,
             id, target, id, video->encoder != NULL ? gx_encoder_scale(video->encoder) : 1,
+            id, video->passthrough_active,
             id, video->overlay_images, id, video->fallbacks,
             id, video->errors);
 
@@ -1313,6 +1384,10 @@ static int guac_display_video_encode_tier(guac_display_video* video, int tier,
 
     GxEncoder* encoder = guac_display_video_tier(video, tier);
     if (encoder == NULL)
+        return 0;
+
+    /* The main tier's users get the remote desktop's own H.264 meanwhile */
+    if (tier == 0 && video->passthrough_active)
         return 0;
 
     int result = gx_encoder_encode(encoder, now);
@@ -1388,6 +1463,10 @@ static void guac_display_video_move_tier(guac_display_video* video,
     GxEncoder* to = guac_display_video_tier(video, tier);
     if (to == NULL)
         return;
+
+    if (tier == 0)
+        guac_display_video_passthrough_stop(video, "a user moved back to the main stream");
+    entry->passthrough = 0;
 
     if (from != NULL && entry->viewer != 0)
         gx_encoder_remove_viewer(from, entry->viewer);
@@ -1834,6 +1913,137 @@ int guac_display_enable_video(guac_display* display,
 
 }
 
+/**
+ * Whether Annex-B H.264 data contains an IDR slice (NAL unit type 5).
+ */
+static int guac_display_video_has_idr(const unsigned char* data, size_t length) {
+
+    for (size_t i = 0; i + 3 < length; i++) {
+        if (data[i] == 0 && data[i + 1] == 0 && data[i + 2] == 1
+                && (data[i + 3] & 0x1F) == 5)
+            return 1;
+    }
+
+    return 0;
+
+}
+
+void guac_display_video_passthrough(guac_display* display,
+        const unsigned char* h264, size_t length,
+        const guac_display_video_region* regions, int region_count,
+        int width, int height) {
+
+    guac_display_video* video = display->video;
+    if (video == NULL || h264 == NULL || length == 0)
+        return;
+
+    pthread_mutex_lock(&video->lock);
+
+    /* Usable only when the remote desktop's stream can stand in for the
+     * main encoder's: one stripe covering the screen, full resolution, and
+     * nobody (the recording) needing keyframes on its own schedule */
+    int eligible = video->settings.passthrough && video->encoder != NULL
+        && video->stripe_count == 1 && gx_encoder_scale(video->encoder) == 1
+        && width == video->width && height == video->height
+        && region_count > 0 && region_count <= 0xFFFF;
+
+    guac_display_video_entry* entry;
+    for (entry = video->entries; entry != NULL && eligible; entry = entry->next) {
+        if (entry->user == NULL && entry->streams != NULL)
+            eligible = 0;
+    }
+
+    if (!eligible) {
+        guac_display_video_passthrough_stop(video, "not possible right now");
+        pthread_mutex_unlock(&video->lock);
+        return;
+    }
+
+    int keyframe = guac_display_video_has_idr(h264, length);
+
+    /* Start only at a keyframe, with every main-tier user that is watching */
+    if (!video->passthrough_active) {
+
+        if (!keyframe) {
+            pthread_mutex_unlock(&video->lock);
+            return;
+        }
+
+        int users = 0;
+        for (entry = video->entries; entry != NULL; entry = entry->next) {
+            if (entry->user != NULL && entry->tier == 0 && entry->viewer != 0) {
+                entry->passthrough = 1;
+                users++;
+            }
+        }
+
+        if (users == 0) {
+            pthread_mutex_unlock(&video->lock);
+            return;
+        }
+
+        video->passthrough_active = 1;
+        if (video->passthrough_frame_id == 0)
+            video->passthrough_frame_id = GUAC_DISPLAY_VIDEO_PASSTHROUGH_FIRST_FRAME;
+        guac_client_log(display->client, GUAC_LOG_INFO, "Video: forwarding the "
+                "remote desktop's own H.264 to %i user(s) (passthrough).", users);
+
+    }
+
+    /* Part: header, region list (count, then x/y/width/height), H.264 */
+    size_t region_bytes = 2 + 8 * (size_t) region_count;
+    size_t payload = region_bytes + length;
+    unsigned char* buffer = guac_mem_alloc(GUAC_DISPLAY_VIDEO_HEADER_SIZE + payload);
+    uint32_t frame_id = video->passthrough_frame_id++;
+    if (video->passthrough_frame_id == GUAC_DISPLAY_VIDEO_LOW_FIRST_FRAME)
+        video->passthrough_frame_id = GUAC_DISPLAY_VIDEO_PASSTHROUGH_FIRST_FRAME;
+
+    buffer[0] = GUAC_DISPLAY_VIDEO_FORMAT_VERSION;
+    buffer[1] = GUAC_DISPLAY_VIDEO_FLAG_REGIONS
+              | (keyframe ? GUAC_DISPLAY_VIDEO_FLAG_KEYFRAME : 0);
+    buffer[2] = 0;
+    buffer[3] = 0;
+    buffer[4] = (frame_id >> 24) & 0xFF;
+    buffer[5] = (frame_id >> 16) & 0xFF;
+    buffer[6] = (frame_id >> 8) & 0xFF;
+    buffer[7] = frame_id & 0xFF;
+    buffer[8] = (payload >> 24) & 0xFF;
+    buffer[9] = (payload >> 16) & 0xFF;
+    buffer[10] = (payload >> 8) & 0xFF;
+    buffer[11] = payload & 0xFF;
+
+    unsigned char* r = buffer + GUAC_DISPLAY_VIDEO_HEADER_SIZE;
+    r[0] = (region_count >> 8) & 0xFF;
+    r[1] = region_count & 0xFF;
+    r += 2;
+    for (int i = 0; i < region_count; i++, r += 8) {
+        int values[4] = { regions[i].x, regions[i].y, regions[i].width, regions[i].height };
+        for (int k = 0; k < 4; k++) {
+            int v = values[k] < 0 ? 0 : (values[k] > 0xFFFF ? 0xFFFF : values[k]);
+            r[k * 2] = (v >> 8) & 0xFF;
+            r[k * 2 + 1] = v & 0xFF;
+        }
+    }
+    memcpy(buffer + GUAC_DISPLAY_VIDEO_HEADER_SIZE + region_bytes, h264, length);
+
+    for (entry = video->entries; entry != NULL; entry = entry->next) {
+        if (!entry->passthrough || entry->streams == NULL || entry->paused)
+            continue;
+        guac_protocol_send_blobs(entry->socket, entry->streams[0], buffer,
+                GUAC_DISPLAY_VIDEO_HEADER_SIZE + payload);
+        guac_socket_flush(entry->socket);
+    }
+
+    guac_mem_free(buffer);
+    video->passthrough_frames++;
+    video->frames++;
+    video->keyframes += keyframe ? 1 : 0;
+    video->bytes += length;
+
+    pthread_mutex_unlock(&video->lock);
+
+}
+
 int guac_display_video_record(guac_display* display, guac_socket* socket) {
 
     guac_display_video* video = display->video;
@@ -1897,6 +2107,12 @@ int guac_display_enable_video(guac_display* display,
 
 int guac_display_video_record(guac_display* display, guac_socket* socket) {
     return 1;
+}
+
+void guac_display_video_passthrough(guac_display* display,
+        const unsigned char* h264, size_t length,
+        const guac_display_video_region* regions, int region_count,
+        int width, int height) {
 }
 
 #endif

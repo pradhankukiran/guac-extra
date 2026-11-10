@@ -47,6 +47,7 @@ static const char* GUACD_METRICS_FAMILIES[][3] = {
     { "guac_extra_video_bytes_total", "counter", "Bytes of H.264 encoded" },
     { "guac_extra_video_target_kbps", "gauge", "Current adaptive bitrate target (kbit/s)" },
     { "guac_extra_video_scale", "gauge", "Resolution divisor: 1 full, 2 half (slow link)" },
+    { "guac_extra_video_passthrough", "gauge", "1 while the remote desktop's own H.264 is forwarded" },
     { "guac_extra_video_overlay_images_total", "counter", "Lossless overlay images sent" },
     { "guac_extra_video_fallbacks_total", "counter", "Users switched from video to images" },
     { "guac_extra_video_errors_total", "counter", "Encoding errors" },

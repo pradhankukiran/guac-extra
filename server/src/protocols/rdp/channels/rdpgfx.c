@@ -23,10 +23,13 @@
 #include "settings.h"
 
 #include <freerdp/client/rdpgfx.h>
+#include <freerdp/codec/h264.h>
 #include <freerdp/freerdp.h>
 #include <freerdp/gdi/gfx.h>
 #include <freerdp/event.h>
 #include <guacamole/client.h>
+#include <guacamole/display-video.h>
+#include <guacamole/mem.h>
 
 #include <stdlib.h>
 #include <string.h>
@@ -49,6 +52,64 @@
  *     Event-specific arguments, mainly the name of the channel, and a
  *     reference to the associated plugin loaded for that channel by FreeRDP.
  */
+/**
+ * guac-extra: FreeRDP's own handler for surface commands (decoding into the
+ * GDI surface), called after the H.264 of AVC420 commands is offered for
+ * passthrough. One RDP connection per process, so a static is enough.
+ */
+static pcRdpgfxSurfaceCommand guac_rdp_rdpgfx_surface_command_next = NULL;
+
+/**
+ * guac-extra: offers the H.264 of AVC420 surface commands for the surface
+ * shown at the top-left of the screen to the display's video
+ * (passthrough), then decodes as usual so guacd's copy of the screen stays
+ * current.
+ */
+static UINT guac_rdp_rdpgfx_surface_command(RdpgfxClientContext* rdpgfx,
+        const RDPGFX_SURFACE_COMMAND* cmd) {
+
+    if (cmd->codecId == RDPGFX_CODECID_AVC420 && cmd->extra != NULL
+            && rdpgfx->custom != NULL && rdpgfx->GetSurfaceData != NULL) {
+
+        rdpGdi* gdi = (rdpGdi*) rdpgfx->custom;
+        guac_client* client = ((rdp_freerdp_context*) gdi->context)->client;
+        guac_rdp_client* rdp_client = (guac_rdp_client*) client->data;
+
+        gdiGfxSurface* surface = (gdiGfxSurface*) rdpgfx->GetSurfaceData(rdpgfx,
+                (UINT16) cmd->surfaceId);
+
+        if (surface != NULL && surface->outputMapped
+                && surface->outputOriginX == 0 && surface->outputOriginY == 0
+                && rdp_client->display != NULL) {
+
+            const RDPGFX_AVC420_BITMAP_STREAM* bs =
+                (const RDPGFX_AVC420_BITMAP_STREAM*) cmd->extra;
+            UINT32 count = bs->meta.numRegionRects;
+
+            guac_display_video_region* regions = guac_mem_alloc(count > 0 ? count : 1,
+                    sizeof(guac_display_video_region));
+            for (UINT32 i = 0; i < count; i++) {
+                const RECTANGLE_16* rect = &bs->meta.regionRects[i];
+                regions[i].x = rect->left;
+                regions[i].y = rect->top;
+                regions[i].width = rect->right - rect->left;
+                regions[i].height = rect->bottom - rect->top;
+            }
+
+            guac_display_video_passthrough(rdp_client->display, bs->data,
+                    bs->length, regions, (int) count,
+                    (int) surface->width, (int) surface->height);
+
+            guac_mem_free(regions);
+
+        }
+
+    }
+
+    return guac_rdp_rdpgfx_surface_command_next(rdpgfx, cmd);
+
+}
+
 static void guac_rdp_rdpgfx_channel_connected(rdpContext* context,
         ChannelConnectedEventArgs* args) {
 
@@ -65,9 +126,22 @@ static void guac_rdp_rdpgfx_channel_connected(rdpContext* context,
     if (!gdi_graphics_pipeline_init(gdi, rdpgfx))
         guac_client_log(client, GUAC_LOG_WARNING, "Rendering backend for RDPGFX "
                 "channel could not be loaded. Graphics may not render at all!");
-    else
+    else {
+
         guac_client_log(client, GUAC_LOG_DEBUG, "RDPGFX channel will be used for "
                 "the RDP Graphics Pipeline Extension.");
+
+        /* guac-extra: look at H.264 surface commands before FreeRDP decodes
+         * them, to forward them to video users (video-passthrough) */
+        guac_rdp_client* rdp_client = (guac_rdp_client*) client->data;
+        if (rdp_client->settings->enable_video
+                && rdp_client->settings->video.passthrough
+                && rdpgfx->SurfaceCommand != guac_rdp_rdpgfx_surface_command) {
+            guac_rdp_rdpgfx_surface_command_next = rdpgfx->SurfaceCommand;
+            rdpgfx->SurfaceCommand = guac_rdp_rdpgfx_surface_command;
+        }
+
+    }
 
 }
 
