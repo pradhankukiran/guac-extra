@@ -54,6 +54,7 @@ Add to an RDP or VNC connection:
 | `video-threads` | Most encoder threads per session, 1-16 (default 2) |
 | `video-scaling` | `false` to keep full resolution on links slower than 500 kbit/s (default on) |
 | `video-simulcast` | `false` to keep one stream even when one user's link is much slower (default on) |
+| `video-passthrough` | RDP: `true` to forward Windows' own H.264 instead of re-encoding (experimental, default off) |
 
 ## License
 

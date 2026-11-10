@@ -645,6 +645,7 @@
         "FIELD_HEADER_VIDEO_THREADS"              : "Maximum encoder threads (1-16):",
         "FIELD_HEADER_VIDEO_SCALING"              : "Keep full resolution on very slow links:",
         "FIELD_HEADER_VIDEO_SIMULCAST"            : "One stream for all users (no slow-user stream):",
+        "FIELD_HEADER_VIDEO_PASSTHROUGH"          : "Forward Windows' own H.264 (experimental):",
         "FIELD_HEADER_GATEWAY_DOMAIN"   : "Domain:",
         "FIELD_HEADER_GATEWAY_HOSTNAME" : "Hostname:",
         "FIELD_HEADER_GATEWAY_PASSWORD" : "Password:",

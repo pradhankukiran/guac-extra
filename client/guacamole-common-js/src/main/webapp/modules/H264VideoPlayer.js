@@ -90,6 +90,15 @@ Guacamole.H264VideoPlayer = function H264VideoPlayer(stream, layer) {
      */
     var submitted = {};
 
+    /**
+     * Regions of passthrough parts still being decoded (frame ID -> list),
+     * and those of the frame waiting in `pending`.
+     *
+     * @private
+     */
+    var regionsById = {};
+    var pendingRegions = null;
+
     var stats = Guacamole.H264VideoPlayer.stats;
     stats.players++;
 
@@ -100,9 +109,25 @@ Guacamole.H264VideoPlayer = function H264VideoPlayer(stream, layer) {
      * @private
      * @param {!VideoFrame} frame
      */
-    var draw = function draw(frame) {
+    var draw = function draw(frame, regions) {
 
         if (layer.width > 0 && layer.height > 0) {
+
+            // Passthrough pictures are valid only in their regions
+            if (regions) {
+                var context = layer.getCanvas().getContext('2d');
+                context.save();
+                context.beginPath();
+                for (var i = 0; i < regions.length; i++)
+                    context.rect(regions[i].x, regions[i].y,
+                            regions[i].width, regions[i].height);
+                context.clip();
+                context.drawImage(frame, 0, 0);
+                context.restore();
+                frame.close();
+                return;
+            }
+
             var factor = Guacamole.H264VideoPlayer.upscaleFactor(
                     frame.displayWidth, layer.width);
             if (factor > 1)
@@ -119,6 +144,7 @@ Guacamole.H264VideoPlayer = function H264VideoPlayer(stream, layer) {
         if (pending)
             pending.close();
         pending = frame;
+        pendingRegions = regions;
 
         if (!waiting)
             window.setTimeout(function retry() {
@@ -126,7 +152,7 @@ Guacamole.H264VideoPlayer = function H264VideoPlayer(stream, layer) {
                     return;
                 var next = pending;
                 pending = null;
-                draw(next);
+                draw(next, pendingRegions);
             }, 16);
 
     };
@@ -226,10 +252,12 @@ Guacamole.H264VideoPlayer = function H264VideoPlayer(stream, layer) {
                     Guacamole.H264VideoPlayer.countDecoded(frameId,
                             submitted[frameId], frame.displayWidth, frame.displayHeight);
                     delete submitted[frameId];
+                    var regions = regionsById[frameId] || null;
+                    delete regionsById[frameId];
                     if (stopped)
                         frame.close();
                     else
-                        draw(frame);
+                        draw(frame, regions);
                     stream.sendAck(String(frameId), Guacamole.Status.Code.SUCCESS);
                 },
                 error: function error(e) {
@@ -285,6 +313,8 @@ Guacamole.H264VideoPlayer = function H264VideoPlayer(stream, layer) {
         if (part.keyframe)
             stats.keyframes++;
         submitted[part.frameId] = performance.now();
+        if (part.regions)
+            regionsById[part.frameId] = part.regions;
 
         try {
             decoder.decode(new EncodedVideoChunk({
@@ -414,10 +444,34 @@ Guacamole.H264VideoPlayer.Part = function Part(flags, stripe, frameId, data) {
     this.frameId = frameId;
 
     /**
+     * The parts of the decoded picture that may be drawn, or null for all
+     * of it. Set when guacd forwards H.264 from the remote desktop
+     * (passthrough): those pictures are only valid in these regions.
+     * @type {Array.<{x: number, y: number, width: number, height: number}>}
+     */
+    this.regions = null;
+
+    /**
      * H.264 Annex-B data.
      * @type {!Uint8Array}
      */
     this.data = data;
+
+    // Region list: count, then x, y, width, height (16-bit big endian)
+    if ((flags & 0x04) !== 0) {
+        var view = new DataView(data.buffer, data.byteOffset, data.length);
+        var count = data.length >= 2 ? view.getUint16(0) : 0;
+        var end = 2 + count * 8;
+        if (end > data.length)
+            throw new Error('Video part region list is truncated');
+        this.regions = [];
+        for (var i = 0; i < count; i++) {
+            var o = 2 + i * 8;
+            this.regions.push({ x: view.getUint16(o), y: view.getUint16(o + 2),
+                width: view.getUint16(o + 4), height: view.getUint16(o + 6) });
+        }
+        this.data = data.subarray(end);
+    }
 
 };
 

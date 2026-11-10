@@ -181,6 +181,11 @@
                     "name"    : "video-simulcast",
                     "type"    : "BOOLEAN",
                     "options" : [ "false" ]
+                },
+                {
+                    "name"    : "video-passthrough",
+                    "type"    : "BOOLEAN",
+                    "options" : [ "true" ]
                 }
             ]
         },
