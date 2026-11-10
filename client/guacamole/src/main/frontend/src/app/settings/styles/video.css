@@ -1,0 +1,38 @@
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may
+ * not use this file except in compliance with the License. You may obtain a
+ * copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Part of guac-extra. Not part of Apache Guacamole.
+ */
+
+.settings.video-statistics .video-statistics-list {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.settings.video-statistics .video-statistics-list th,
+.settings.video-statistics .video-statistics-list td {
+    text-align: left;
+    padding: 0.25em 0.75em 0.25em 0;
+    white-space: nowrap;
+}
+
+.settings.video-statistics .video-statistics-list td.connection {
+    font-family: monospace;
+    font-size: 0.85em;
+}
+
+.settings.video-statistics .video-statistics-list tr.inactive {
+    opacity: 0.6;
+}
+
+.settings.video-statistics .video-statistics-list tr.warning td {
+    color: #A33;
+}
+
+.settings.video-statistics .video-statistics-error {
+    color: #A33;
+}

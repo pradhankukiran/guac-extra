@@ -1242,6 +1242,32 @@
 
     },
 
+    "SETTINGS_VIDEO" : {
+
+        "HELP_VIDEO" : "Live video statistics of every session, as reported by guacd. Refreshed every two seconds.",
+
+        "INFO_MODE_IMAGES"      : "Images",
+        "INFO_MODE_PASSTHROUGH" : "H.264 (forwarded)",
+        "INFO_NO_SESSIONS"      : "No sessions are using video right now.",
+        "INFO_TOTALS"           : "{{sessions}} session(s): {{video}} on video, {{low}} on the low-quality stream, {{images}} on images, {{kbps | number:0}} kbit/s in total.",
+        "INFO_UNAVAILABLE"      : "Video statistics are unavailable.",
+        "INFO_USERS_IMAGES"     : "on images",
+        "INFO_USERS_LOW"        : "on the low-quality stream",
+        "INFO_USERS_PAUSED"     : "paused",
+        "INFO_USERS_VIDEO"      : "on video",
+
+        "TABLE_HEADER_CONNECTION" : "Connection",
+        "TABLE_HEADER_ERRORS"     : "Errors",
+        "TABLE_HEADER_FALLBACKS"  : "Fell back to images",
+        "TABLE_HEADER_FPS"        : "fps",
+        "TABLE_HEADER_KBPS"       : "kbit/s",
+        "TABLE_HEADER_KEYFRAMES"  : "Keyframes",
+        "TABLE_HEADER_MODE"       : "Mode",
+        "TABLE_HEADER_TARGET"     : "Target kbit/s",
+        "TABLE_HEADER_USERS"      : "Users"
+
+    },
+
     "SETTINGS_SESSIONS" : {
         
         "ACTION_ACKNOWLEDGE" : "@:APP.ACTION_ACKNOWLEDGE",
@@ -1289,7 +1315,8 @@
         "ACTION_MANAGE_USERS"       : "@:APP.ACTION_MANAGE_USERS",
         "ACTION_MANAGE_USER_GROUPS" : "@:APP.ACTION_MANAGE_USER_GROUPS",
         "ACTION_NAVIGATE_HOME"      : "@:APP.ACTION_NAVIGATE_HOME",
-        "ACTION_VIEW_HISTORY"       : "@:APP.ACTION_VIEW_HISTORY"
+        "ACTION_VIEW_HISTORY"       : "@:APP.ACTION_VIEW_HISTORY",
+        "ACTION_VIEW_VIDEO"         : "Video"
 
     }
 

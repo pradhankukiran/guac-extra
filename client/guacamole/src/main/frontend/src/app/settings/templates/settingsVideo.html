@@ -1,0 +1,55 @@
+<div class="settings section video-statistics" ng-class="{loading: rows === null}">
+
+    <!-- guac-extra: live video statistics -->
+    <p>{{'SETTINGS_VIDEO.HELP_VIDEO' | translate}}</p>
+
+    <p class="video-statistics-error" ng-show="error">
+        {{'SETTINGS_VIDEO.INFO_UNAVAILABLE' | translate}} {{error}}
+    </p>
+
+    <p class="video-statistics-totals" ng-show="totals">
+        {{'SETTINGS_VIDEO.INFO_TOTALS' | translate:totals}}
+    </p>
+
+    <table class="video-statistics-list" ng-show="rows.length">
+        <thead>
+            <tr>
+                <th>{{'SETTINGS_VIDEO.TABLE_HEADER_CONNECTION' | translate}}</th>
+                <th>{{'SETTINGS_VIDEO.TABLE_HEADER_MODE' | translate}}</th>
+                <th>{{'SETTINGS_VIDEO.TABLE_HEADER_USERS' | translate}}</th>
+                <th>{{'SETTINGS_VIDEO.TABLE_HEADER_FPS' | translate}}</th>
+                <th>{{'SETTINGS_VIDEO.TABLE_HEADER_KBPS' | translate}}</th>
+                <th>{{'SETTINGS_VIDEO.TABLE_HEADER_TARGET' | translate}}</th>
+                <th>{{'SETTINGS_VIDEO.TABLE_HEADER_KEYFRAMES' | translate}}</th>
+                <th>{{'SETTINGS_VIDEO.TABLE_HEADER_FALLBACKS' | translate}}</th>
+                <th>{{'SETTINGS_VIDEO.TABLE_HEADER_ERRORS' | translate}}</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr ng-repeat="row in rows" ng-class="{inactive: !row.active, warning: row.errors > 0}">
+                <td class="connection">{{row.connection}}</td>
+                <td>
+                    <span ng-show="!row.active">{{'SETTINGS_VIDEO.INFO_MODE_IMAGES' | translate}}</span>
+                    <span ng-show="row.active && row.passthrough">{{'SETTINGS_VIDEO.INFO_MODE_PASSTHROUGH' | translate}}</span>
+                    <span ng-show="row.active && !row.passthrough">H.264</span>
+                    <span ng-show="row.active && row.scale > 1">&middot; 1/{{row.scale}}</span>
+                </td>
+                <td>
+                    {{row.usersVideo}} {{'SETTINGS_VIDEO.INFO_USERS_VIDEO' | translate}}
+                    <span ng-show="row.usersLow">&middot; {{row.usersLow}} {{'SETTINGS_VIDEO.INFO_USERS_LOW' | translate}}</span>
+                    <span ng-show="row.usersPaused">&middot; {{row.usersPaused}} {{'SETTINGS_VIDEO.INFO_USERS_PAUSED' | translate}}</span>
+                    <span ng-show="row.usersImages">&middot; {{row.usersImages}} {{'SETTINGS_VIDEO.INFO_USERS_IMAGES' | translate}}</span>
+                </td>
+                <td>{{row.fps === null ? '…' : (row.fps | number:1)}}</td>
+                <td>{{row.kbps === null ? '…' : (row.kbps | number:0)}}</td>
+                <td>{{row.targetKbps | number:0}}</td>
+                <td>{{row.keyframes}}</td>
+                <td>{{row.fallbacks}}</td>
+                <td>{{row.errors}}</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <p ng-show="rows && !rows.length && !error">{{'SETTINGS_VIDEO.INFO_NO_SESSIONS' | translate}}</p>
+
+</div>

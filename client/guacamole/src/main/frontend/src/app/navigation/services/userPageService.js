@@ -217,6 +217,9 @@ angular.module('navigation').factory('userPageService', ['$injector',
         var canManageConnections = [];
         var canViewConnectionRecords = [];
 
+        // guac-extra: whether the user is a system administrator anywhere
+        var isAdministrator = false;
+
         // Inspect the contents of each provided permission set
         angular.forEach(authenticationService.getAvailableDataSources(), function inspectPermissions(dataSource) {
 
@@ -227,6 +230,10 @@ angular.module('navigation').factory('userPageService', ['$injector',
 
             // Do not modify original object
             permissions = angular.copy(permissions);
+
+            // guac-extra: administrators see live video statistics
+            if (PermissionSet.hasSystemPermission(permissions, PermissionSet.SystemPermissionType.ADMINISTER))
+                isAdministrator = true;
 
             // Ignore permission to update root group
             PermissionSet.removeConnectionGroupPermission(permissions,
@@ -350,6 +357,14 @@ angular.module('navigation').factory('userPageService', ['$injector',
                 url  : '/settings/' + encodeURIComponent(dataSource) + '/connections'
             }));
         });
+
+        // guac-extra: live video statistics (administrators)
+        if (isAdministrator) {
+            pages.push(new PageDefinition({
+                name : 'USER_MENU.ACTION_VIEW_VIDEO',
+                url  : '/settings/video'
+            }));
+        }
 
         // Add link to user preferences (always accessible)
         pages.push(new PageDefinition({

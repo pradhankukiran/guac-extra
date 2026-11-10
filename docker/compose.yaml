@@ -5,6 +5,9 @@ services:
   guacd:
     image: guac-extra/guacd:dev
     restart: "no"
+    # Read by the web app's Video settings page (http://guacd:9100/metrics)
+    environment:
+      GUACD_METRICS_PORT: "9100"
     extra_hosts:
       - "host.docker.internal:host-gateway"
   desktop:
