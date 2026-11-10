@@ -25,6 +25,8 @@
 #include "display-types.h"
 #include "socket-types.h"
 
+#include <stddef.h>
+
 /**
  * The mimetype a user must list in its "video" handshake instruction to
  * receive video, and the mimetype of the video streams sent. The stream
