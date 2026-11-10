@@ -183,6 +183,11 @@
                     "options" : [ "false" ]
                 },
                 {
+                    "name"    : "video-focus",
+                    "type"    : "BOOLEAN",
+                    "options" : [ "false" ]
+                },
+                {
                     "name"    : "video-passthrough",
                     "type"    : "BOOLEAN",
                     "options" : [ "true" ]

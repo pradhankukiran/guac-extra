@@ -75,6 +75,12 @@ typedef struct guac_display_video_settings {
     int passthrough;
 
     /**
+     * Non-zero to encode the area around the mouse pointer (where the user
+     * is working) at better quality than the rest of the screen.
+     */
+    int focus;
+
+    /**
      * Non-zero to halve the video's resolution while the link can't carry
      * even the lowest bitrate (500 kbit/s); browsers scale it back up.
      */

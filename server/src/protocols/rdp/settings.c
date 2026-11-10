@@ -180,6 +180,7 @@ const char* GUAC_RDP_CLIENT_ARGS[] = {
     "video-scaling",
     "video-simulcast",
     "video-passthrough",
+    "video-focus",
     NULL
 };
 
@@ -817,6 +818,12 @@ enum RDP_ARGS_IDX {
      */
     IDX_VIDEO_PASSTHROUGH,
 
+    /**
+     * guac-extra: "false" to encode the whole screen at the same quality.
+     * By default, the area around the mouse pointer gets better quality.
+     */
+    IDX_VIDEO_FOCUS,
+
     RDP_ARGS_COUNT
 };
 
@@ -1015,6 +1022,9 @@ guac_rdp_settings* guac_rdp_parse_args(guac_user* user,
     settings->video.simulcast =
         guac_user_parse_args_boolean(user, GUAC_RDP_CLIENT_ARGS, argv,
                 IDX_VIDEO_SIMULCAST, 1);
+    settings->video.focus =
+        guac_user_parse_args_boolean(user, GUAC_RDP_CLIENT_ARGS, argv,
+                IDX_VIDEO_FOCUS, 1);
     settings->video.passthrough =
         guac_user_parse_args_boolean(user, GUAC_RDP_CLIENT_ARGS, argv,
                 IDX_VIDEO_PASSTHROUGH, 0);

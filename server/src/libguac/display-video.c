@@ -127,6 +127,14 @@
 #define GUAC_DISPLAY_VIDEO_LOW_FIRST_FRAME 0x80000000u
 
 /**
+ * Focus: the area around the mouse pointer encoded at better quality (QP
+ * steps better; the rest a quarter of that worse), and its size.
+ */
+#define GUAC_DISPLAY_VIDEO_FOCUS_BOOST 4.0f
+#define GUAC_DISPLAY_VIDEO_FOCUS_WIDTH 384
+#define GUAC_DISPLAY_VIDEO_FOCUS_HEIGHT 256
+
+/**
  * Upper bound on recipients read per frame.
  */
 #define GUAC_DISPLAY_VIDEO_MAX_RECIPIENTS 256
@@ -1137,6 +1145,9 @@ static void guac_display_video_activate(guac_display_video* video,
     if (video->settings.lossless)
         config.paintover_burst = 0;
 
+    if (video->settings.focus)
+        config.focus_boost = GUAC_DISPLAY_VIDEO_FOCUS_BOOST;
+
     config.log = guac_display_video_log;
     config.log_data = client;
     video->config = config;
@@ -1731,6 +1742,17 @@ void PFW_LFW_guac_display_video_take_ops(guac_display* display,
             if (!video->split)
                 op->type = GUAC_DISPLAY_PLAN_OPERATION_NOP;
 
+        }
+
+        /* Better quality where the user is working: around the pointer */
+        if (video->settings.focus && display->pending_frame.cursor_user != NULL) {
+            int fx = display->pending_frame.cursor_x - GUAC_DISPLAY_VIDEO_FOCUS_WIDTH / 2;
+            int fy = display->pending_frame.cursor_y - GUAC_DISPLAY_VIDEO_FOCUS_HEIGHT / 2;
+            gx_encoder_set_focus(video->encoder, fx, fy,
+                    GUAC_DISPLAY_VIDEO_FOCUS_WIDTH, GUAC_DISPLAY_VIDEO_FOCUS_HEIGHT);
+            if (video->low != NULL)
+                gx_encoder_set_focus(video->low, fx, fy,
+                        GUAC_DISPLAY_VIDEO_FOCUS_WIDTH, GUAC_DISPLAY_VIDEO_FOCUS_HEIGHT);
         }
 
         if (rect_count > 0) {

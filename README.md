@@ -55,6 +55,7 @@ Add to an RDP or VNC connection:
 | `video-scaling` | `false` to keep full resolution on links slower than 500 kbit/s (default on) |
 | `video-simulcast` | `false` to keep one stream even when one user's link is much slower (default on) |
 | `video-passthrough` | RDP: `true` to forward Windows' own H.264 instead of re-encoding (experimental, default off) |
+| `video-focus` | `false` to encode the whole screen at one quality (default: sharper around the pointer) |
 
 ### Bandwidth policies
 

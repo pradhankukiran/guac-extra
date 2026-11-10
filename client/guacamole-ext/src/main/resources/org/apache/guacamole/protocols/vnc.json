@@ -64,6 +64,11 @@
                     "name"    : "video-simulcast",
                     "type"    : "BOOLEAN",
                     "options" : [ "false" ]
+                },
+                {
+                    "name"    : "video-focus",
+                    "type"    : "BOOLEAN",
+                    "options" : [ "false" ]
                 }
             ]
         },
