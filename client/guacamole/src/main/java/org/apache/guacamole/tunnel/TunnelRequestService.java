@@ -68,6 +68,13 @@ public class TunnelRequestService {
     private ListenerService listenerService;
 
     /**
+     * guac-extra: per-user and per-group video bitrate caps, offered to
+     * connections as the ${GUAC_EXTRA_MAX_KBPS} token.
+     */
+    @Inject
+    private VideoBandwidthPolicy videoBandwidthPolicy;
+
+    /**
      * Notifies bound listeners that a new tunnel has been connected.
      * Listeners may veto a connected tunnel by throwing any GuacamoleException.
      *
@@ -348,9 +355,13 @@ public class TunnelRequestService {
 
         try {
 
+            // Parameter tokens, plus guac-extra's ${GUAC_EXTRA_MAX_KBPS}
+            StandardTokenMap tokens = new StandardTokenMap(authenticatedUser);
+            videoBandwidthPolicy.addToken(session, tokens);
+
             // Create connected tunnel using provided connection ID and client information
             GuacamoleTunnel tunnel = createConnectedTunnel(userContext, type,
-                    id, info, new StandardTokenMap(authenticatedUser));
+                    id, info, tokens);
 
             // Notify listeners to allow connection to be vetoed
             fireTunnelConnectEvent(authenticatedUser, authenticatedUser.getCredentials(), tunnel);

@@ -56,6 +56,19 @@ Add to an RDP or VNC connection:
 | `video-simulcast` | `false` to keep one stream even when one user's link is much slower (default on) |
 | `video-passthrough` | RDP: `true` to forward Windows' own H.264 instead of re-encoding (experimental, default off) |
 
+### Bandwidth policies
+
+Cap video per user or group in `guacamole.properties`:
+
+```
+video-bandwidth-policy: group:students=2000, group:staff=10000, user:alice=5000, default=4000
+```
+
+A user's own rule wins, then the highest rule among their groups, then
+`default`. Set a connection's `video-max-kbps` to `${GUAC_EXTRA_MAX_KBPS}`
+and each user connecting gets their own cap (empty, so guacd's default,
+when no rule applies).
+
 ## License
 
 Apache License 2.0. Includes code derived from voxl (MIT). See
