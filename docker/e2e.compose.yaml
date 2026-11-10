@@ -1,0 +1,17 @@
+# End-to-end test setup: guac-extra guacd (published on 127.0.0.1:4823)
+# and a test desktop it can reach as "desktop" (VNC 5900, RDP 3389).
+name: guac-extra-e2e
+services:
+  guacd:
+    image: guac-extra/guacd:dev
+    restart: "no"
+    # GUACD_LOG_LEVEL=debug shows the video bitrate controller's decisions
+    command: ["/opt/guacamole/sbin/guacd", "-b", "0.0.0.0", "-L", "${GUACD_LOG_LEVEL:-info}", "-f"]
+    environment:
+      GUACD_METRICS_PORT: "9100"
+    ports:
+      - "127.0.0.1:4823:4822"
+      - "127.0.0.1:9123:9100"
+  desktop:
+    image: guac-extra/test-desktop:dev
+    restart: "no"

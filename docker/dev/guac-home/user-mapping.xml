@@ -1,0 +1,31 @@
+<user-mapping>
+    <authorize username="kiran" password="cNgTeaCz4CWTMY2C">
+        <connection name="WSL Ubuntu (SSH)">
+            <protocol>ssh</protocol>
+            <param name="hostname">host.docker.internal</param>
+            <param name="port">22</param>
+            <param name="username">kiran</param>
+        </connection>
+        <connection name="Test desktop: VNC, video">
+            <protocol>vnc</protocol>
+            <param name="hostname">desktop</param>
+            <param name="port">5900</param>
+            <param name="enable-video">true</param>
+        </connection>
+        <connection name="Test desktop: VNC, images (stock)">
+            <protocol>vnc</protocol>
+            <param name="hostname">desktop</param>
+            <param name="port">5900</param>
+        </connection>
+        <connection name="Test desktop: RDP, video">
+            <protocol>rdp</protocol>
+            <param name="hostname">desktop</param>
+            <param name="port">3389</param>
+            <param name="username">test</param>
+            <param name="password">test</param>
+            <param name="security">any</param>
+            <param name="ignore-cert">true</param>
+            <param name="enable-video">true</param>
+        </connection>
+    </authorize>
+</user-mapping>

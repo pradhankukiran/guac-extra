@@ -1,0 +1,23 @@
+# Local dev setup: guac-extra guacd + web app on http://localhost:8081/guacamole
+# Stock Guacamole (../guacamole-local) stays on 8080 for side-by-side tests.
+name: guac-extra
+services:
+  guacd:
+    image: guac-extra/guacd:dev
+    restart: "no"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+  desktop:
+    image: guac-extra/test-desktop:dev
+    restart: "no"
+  web:
+    image: guac-extra/web:dev
+    restart: "no"
+    depends_on: [guacd]
+    environment:
+      GUACD_HOSTNAME: guacd
+      GUACAMOLE_HOME: /guac-home
+    volumes:
+      - ./dev/guac-home:/guac-home:ro
+    ports:
+      - "127.0.0.1:8081:8080"
