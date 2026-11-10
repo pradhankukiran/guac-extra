@@ -1,0 +1,22 @@
+[package]
+name = "guac-extra-video"
+version = "0.3.0"
+edition = "2021"
+license = "Apache-2.0 AND MIT"
+description = "Video pipeline for guac-extra: x264 encoding, stripes, paint-over and bitrate control, with a C API for guacd"
+publish = false
+links = "x264"
+
+[lib]
+name = "guac_extra_video"
+crate-type = ["staticlib", "rlib"]
+
+[build-dependencies]
+bindgen = "0.72"
+cbindgen = "0.29"
+pkg-config = "0.3"
+
+[profile.release]
+panic = "abort"
+lto = true
+codegen-units = 1
